@@ -1,82 +1,77 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Send, Loader, Sparkles } from 'lucide-react';
 import { aiAPI } from '../utils/api';
 
 const AIAssistant = ({ onFilterUpdate, currentFilters }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState([
+    {
+      role: 'assistant',
+      content: "Hi! I'm your AI job assistant. Try:\n• 'Show remote jobs'\n• 'Full-time only'\n• 'High match scores'\n• 'Jobs in Bangalore'\n• 'Clear filters'",
+    },
+  ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, scrollToBottom]);
 
-  // Initial greeting - only run once when component mounts
-  useEffect(() => {
-    setMessages([
-      {
-        role: 'assistant',
-        content: "Hi! I'm your AI job assistant. I can help you filter jobs by skills, location, job type, and more. Try asking me something like:\n\n• Show me remote React jobs\n• Filter for senior positions\n• Find jobs in Bangalore\n• Show only full-time roles",
-        timestamp: new Date(),
-      },
-    ]);
-  }, []); // Empty dependency array - run only once
+  const handleSend = async (messageText = input) => {
+    if (!messageText.trim()) return;
 
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
-
-    const userMessage = {
-      role: 'user',
-      content: input,
-      timestamp: new Date(),
-    };
-
+    const userMessage = { role: 'user', content: messageText };
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setLoading(true);
 
     try {
-      console.log('📤 Sending message to AI:', input);
-      console.log('📊 Current filters:', currentFilters);
+      const response = await aiAPI.chat(messageText, currentFilters);
+      const data = response.data;
 
-      const response = await aiAPI.chat(input, currentFilters);
+      if (data.results && data.results.length > 0) {
+        const result = data.results[0];
 
-      console.log('📥 AI Response:', response);
+        if (result.action === 'update_ui_filters' && result.parameters) {
+          if (onFilterUpdate) {
+            onFilterUpdate(result.parameters);
+          }
+        }
 
-      const assistantMessage = {
-        role: 'assistant',
-        content: response.response || 'I understand. Let me help you with that.',
-        timestamp: new Date(),
-        filterUpdate: response.filterUpdate,
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-
-      // Apply filter updates if any
-      if (response.filterUpdate) {
-        console.log('🔧 Applying filter update:', response.filterUpdate);
-        onFilterUpdate(response.filterUpdate);
+        const assistantMessage = {
+          role: 'assistant',
+          content: result.message || data.message
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+      } else {
+        const assistantMessage = {
+          role: 'assistant',
+          content: data.message || "I can help you filter jobs!"
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
       }
     } catch (error) {
-      console.error('❌ AI chat error:', error);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: "I'm sorry, I'm having trouble right now. Please try again.",
-          timestamp: new Date(),
-        },
-      ]);
+      console.error('AI error:', error);
+      setMessages((prev) => [...prev, {
+        role: 'assistant',
+        content: "Error. Please try again."
+      }]);
     } finally {
       setLoading(false);
     }
   };
+
+  const quickActions = [
+    { label: '🏠 Remote', query: 'Show remote jobs' },
+    { label: '⭐ High Match', query: 'High match scores only' },
+    { label: '💼 Full-time', query: 'Full-time only' },
+    { label: '❌ Clear', query: 'Clear all filters' },
+  ];
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -85,117 +80,86 @@ const AIAssistant = ({ onFilterUpdate, currentFilters }) => {
     }
   };
 
-  const suggestions = [
-    "Show remote jobs",
-    "Filter by React skills",
-    "Full-time only",
-    "High match scores",
-    "Clear all filters",
-  ];
-
-  const handleSuggestionClick = (suggestion) => {
-    setInput(suggestion);
-  };
-
   return (
     <>
-      {/* Floating Button */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2 group z-50"
+          className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg transition-all z-50"
         >
-          <Sparkles size={24} className="group-hover:rotate-12 transition-transform" />
-          <span className="hidden group-hover:inline-block font-medium pr-2">
-            AI Assistant
-          </span>
+          <Sparkles size={28} />
         </button>
       )}
 
-      {/* Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 w-96 h-[600px] bg-white rounded-2xl shadow-2xl flex flex-col z-50 border border-gray-200">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-t-2xl flex items-center justify-between">
+        <div className="fixed bottom-6 right-6 w-96 h-[600px] bg-white rounded-xl shadow-2xl flex flex-col z-50 border-2 border-blue-200">
+          <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 rounded-t-xl flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Sparkles size={20} />
-              <h3 className="font-semibold">AI Job Assistant</h3>
+              <Sparkles size={22} />
+              <div>
+                <h3 className="font-bold">AI Job Assistant</h3>
+                <p className="text-xs text-blue-100">Ask me anything</p>
+              </div>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="hover:bg-white/20 p-1 rounded-lg transition-colors"
-            >
+            <button onClick={() => setIsOpen(false)} className="hover:bg-white/20 rounded-lg p-1.5">
               <X size={20} />
             </button>
           </div>
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.map((msg, idx) => (
-              <div
-                key={idx}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2 ${
-                    msg.role === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-900'
-                  }`}
+          <div className="p-3 bg-gray-50 border-b">
+            <div className="flex flex-wrap gap-2">
+              {quickActions.map((action, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleSend(action.query)}
+                  className="text-xs px-3 py-1.5 rounded-full bg-white border hover:border-blue-500 hover:bg-blue-50"
                 >
-                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                  {msg.filterUpdate && (
-                    <div className="mt-2 pt-2 border-t border-gray-300 text-xs opacity-75">
-                      ✓ Filters applied
-                    </div>
-                  )}
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+            {messages.map((message, index) => (
+              <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                  message.role === 'user'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-900 border'
+                }`}>
+                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                 </div>
               </div>
             ))}
+
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-gray-100 rounded-2xl px-4 py-3">
-                  <Loader className="animate-spin text-gray-600" size={20} />
+                <div className="bg-white border rounded-2xl px-4 py-3 flex items-center gap-2">
+                  <Loader size={16} className="animate-spin text-blue-600" />
+                  <span className="text-sm">Thinking...</span>
                 </div>
               </div>
             )}
+
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Suggestions */}
-          {messages.length <= 1 && (
-            <div className="px-4 pb-2">
-              <p className="text-xs text-gray-500 mb-2">Quick actions:</p>
-              <div className="flex flex-wrap gap-2">
-                {suggestions.map((suggestion, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleSuggestionClick(suggestion)}
-                    className="text-xs px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full transition-colors"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Input */}
-          <div className="p-4 border-t border-gray-200">
+          <div className="p-4 border-t bg-white rounded-b-xl">
             <div className="flex gap-2">
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Ask me to filter jobs..."
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Type your message..."
                 disabled={loading}
+                className="flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
-                onClick={handleSend}
-                disabled={!input.trim() || loading}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white p-2 rounded-full transition-colors"
+                onClick={() => handleSend()}
+                disabled={loading || !input.trim()}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl disabled:opacity-50"
               >
                 <Send size={20} />
               </button>
