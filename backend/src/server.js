@@ -21,11 +21,24 @@ connectDB();
 const start = async () => {
   try {
     // ================================
-    // CORS (DEPLOYMENT SAFE)
+    // ✅ CORS (FIXED FOR NETLIFY + LOCAL)
     // ================================
     await fastify.register(require('@fastify/cors'), {
-      origin: process.env.CORS_ORIGIN || true,
+      origin: (origin, callback) => {
+        const allowedOrigins = [
+          'http://localhost:3000',
+          'https://aijob-tracker.netlify.app',
+        ];
+
+        // allow server-side requests & tools like Postman
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'), false);
+        }
+      },
       credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     });
 
     // ================================
